@@ -1,0 +1,83 @@
+---
+- name: Perform base server setup
+  hosts: servergroup1, servergroup2
+  become: true
+  become_user: root
+
+  vars:
+    login: admin
+    ssh_key_file: ~/.ssh/YOUR_PUBKEY_HERE.pub
+    ssh_port: 2222
+
+
+  tasks:
+    - name: Install ansible depends
+      dnf:
+        name: python3-libselinux
+        state: latest
+
+    - name: Install hardening tools
+      dnf:
+        name: fail2ban, ufw
+        state: latest
+
+    - name: Add admin user
+      user:
+        name:  "{{ login }}"
+        groups: wheel
+
+    - name: Get ufw running
+      ufw:
+        state: enabled
+        policy: deny
+
+    - name: Allow ssh traffic
+      ufw:
+        rule: allow
+        port: "{{ ssh_port }}"
+        proto: tcp
+
+    - name: Enable ufw service
+      service:
+        name: ufw
+        state: started
+        enabled: yes
+
+    - name: Add ssh key for admin user
+      authorized_key:
+        user: "{{ login }}"
+        key: "{{ lookup('file', '{{ ssh_key_file }}' ) }}"
+        state: present
+        manage_dir: yes
+
+    - name: Set no password sudo for admin user
+      lineinfile:
+        dest: /etc/sudoers
+        state: present
+        regexp: '^{{ login }}'
+        line: '{{ login }} ALL=(ALL) NOPASSWD: ALL'
+
+    - name: Don't let people ssh with passwords, Disable root login, change ssh port
+      lineinfile:
+        dest: /etc/ssh/sshd_config
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+        state: present
+      with_items:
+        - { regexp: "^PasswordAuthentication", line: "PasswordAuthentication no" }
+        - { regexp: "^PermitRootLogin", line: "PermitRootLogin no" }
+        - { regexp: "^Port", line: "Port {{ ssh_port }}" }
+      notify: Restart ssh
+
+    - name: Tell selinux that you changed ssh port
+      seport:
+        ports: "{{ ssh_port }}"
+        proto: "tcp"
+        setype: "ssh_port_t"
+        state: present
+
+  handlers:
+    - name: Restart ssh
+      service:
+        name: sshd
+        state: restarted
