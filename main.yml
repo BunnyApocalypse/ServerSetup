@@ -8,6 +8,7 @@
     login: admin
     ssh_key_file: ~/.ssh/YOUR_PUBKEY_HERE.pub
     ssh_port: 2222
+    ansible_python_interpreter: /usr/bin/python3
 
   tasks:
     - name: Install ansible depends
